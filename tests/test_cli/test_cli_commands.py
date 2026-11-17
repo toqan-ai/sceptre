@@ -1193,3 +1193,122 @@ class TestCli:
         result = self.runner.invoke(cli, ["drift", "show", "dev/vpc.yaml"])
         assert result.exit_code == 0
         assert result.output == "---\nmock-stack-external:\n  some: json\n\n"
+
+
+class TestListOutputsExcludeObsolete:
+    def setup_method(self, test_method):
+        self.patcher_ConfigReader = patch("sceptre.plan.plan.ConfigReader")
+        self.patcher_StackActions = patch("sceptre.plan.executor.StackActions")
+
+        self.mock_ConfigReader = self.patcher_ConfigReader.start()
+        self.mock_StackActions = self.patcher_StackActions.start()
+
+        self.active = self._make_stack("active", obsolete=False)
+        self.obsolete = self._make_stack("obsolete", obsolete=True)
+        self._set_stacks(self.active, self.obsolete)
+
+        self.runner = CliRunner()
+
+    def teardown_method(self, test_method):
+        self.patcher_ConfigReader.stop()
+        self.patcher_StackActions.stop()
+
+    def _make_stack(self, name, obsolete, ignore=False):
+        stack = MagicMock(
+            spec=Stack,
+            region=None,
+            profile=None,
+            external_name=f"{name}-external",
+            dependencies=[],
+            ignore=ignore,
+            obsolete=obsolete,
+        )
+        stack.name = name
+        return stack
+
+    def _set_stacks(self, *stacks):
+        mock_config_reader = MagicMock(spec=ConfigReader)
+        mock_config_reader.construct_stacks.return_value = set(stacks), set(stacks)
+        self.mock_ConfigReader.return_value = mock_config_reader
+
+        self.actions = {}
+        for stack in stacks:
+            actions = MagicMock(spec=StackActions)
+            actions.stack = stack
+            actions.describe_outputs.return_value = {
+                stack.name: [{"OutputKey": "Key", "OutputValue": stack.name}]
+            }
+            self.actions[stack] = actions
+
+        self.mock_StackActions.side_effect = lambda stack: self.actions[stack]
+
+    def test_exclude_obsolete__returns_only_active_outputs(self):
+        result = self.runner.invoke(
+            cli, ["list", "outputs", "dev", "--exclude-obsolete", "-e", "stackoutput"]
+        )
+        assert result.exit_code == 0
+        assert result.output == "!stack_output active.yaml::Key [active]\n"
+
+    def test_exclude_obsolete__does_not_describe_obsolete_stack(self):
+        self.runner.invoke(cli, ["list", "outputs", "dev", "--exclude-obsolete"])
+        self.actions[self.active].describe_outputs.assert_called_once_with()
+        self.actions[self.obsolete].describe_outputs.assert_not_called()
+        self.mock_StackActions.assert_called_once_with(self.active)
+
+    def test_exclude_obsolete__still_describes_ignored_stacks(self):
+        ignored = self._make_stack("ignored", obsolete=False, ignore=True)
+        self._set_stacks(self.active, self.obsolete, ignored)
+
+        self.runner.invoke(cli, ["list", "outputs", "dev", "--exclude-obsolete"])
+        self.actions[ignored].describe_outputs.assert_called_once_with()
+        self.actions[self.obsolete].describe_outputs.assert_not_called()
+
+    def test_exclude_obsolete__all_stacks_obsolete__succeeds_without_outputs(self):
+        self._set_stacks(self._make_stack("obsolete", obsolete=True))
+        result = self.runner.invoke(
+            cli, ["list", "outputs", "dev", "--exclude-obsolete"]
+        )
+        assert result.exit_code == 0
+        for actions in self.actions.values():
+            actions.describe_outputs.assert_not_called()
+
+    def test_exclude_obsolete__active_stack_error__still_fails(self):
+        self.actions[self.active].describe_outputs.side_effect = ClientError(
+            {"Error": {"Code": "ValidationError", "Message": "Stack does not exist"}},
+            "DescribeStacks",
+        )
+        result = self.runner.invoke(
+            cli, ["list", "outputs", "dev", "--exclude-obsolete"]
+        )
+        assert result.exit_code == 1
+
+    def test_without_option__describes_obsolete_stack(self):
+        result = self.runner.invoke(
+            cli, ["list", "outputs", "dev", "-e", "stackoutput"]
+        )
+        assert result.exit_code == 0
+        self.actions[self.obsolete].describe_outputs.assert_called_once_with()
+        assert "!stack_output obsolete.yaml::Key [obsolete]\n" in result.output
+
+    @pytest.mark.parametrize(
+        "export,expected",
+        [
+            ("envvar", "export SCEPTRE_Key='active'\n"),
+            ("stackoutput", "!stack_output active.yaml::Key [active]\n"),
+            (
+                "stackoutputexternal",
+                "!stack_output_external active-external::Key [active]\n",
+            ),
+        ],
+    )
+    def test_exclude_obsolete__export_formats(self, export, expected):
+        result = self.runner.invoke(
+            cli, ["list", "outputs", "dev", "--exclude-obsolete", "-e", export]
+        )
+        assert result.exit_code == 0
+        assert result.output == expected
+
+    def test_help_documents_the_option(self):
+        result = self.runner.invoke(cli, ["list", "outputs", "--help"])
+        assert result.exit_code == 0
+        assert "--exclude-obsolete" in result.output

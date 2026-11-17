@@ -34,6 +34,22 @@ environment variable:
    env | grep SCEPTRE
    SCEPTRE_<output_name>=<output_value>
 
+Excluding Obsolete Stacks from Outputs
+--------------------------------------
+
+``sceptre list outputs`` accepts an ``--exclude-obsolete`` flag, which skips any
+Stack Config marked with ``obsolete: true``:
+
+``sceptre list outputs --exclude-obsolete --export=stackoutput STACKGROUP``
+
+This is useful after running ``sceptre launch --prune``, which deletes obsolete
+stacks from CloudFormation while their Stack Configs remain in the project. Without
+the flag, Sceptre tries to describe those deleted stacks and the command fails.
+
+Only stacks explicitly marked ``obsolete: true`` are excluded. Stacks marked
+``ignore: true`` are still described, and failures involving active stacks are still
+raised, so a genuinely missing active stack remains an error.
+
 Variable Handling
 -----------------
 

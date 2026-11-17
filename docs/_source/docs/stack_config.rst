@@ -217,9 +217,10 @@ be ignored and not launched, just as if ``ignore: True`` was on the Stack Config
 of dependency structure is detected. Only obsolete stacks can depend on obsolete stacks.
 
 .. note::
-   The ``obsolete`` configuration **only** applies to the **launch** and **prune** commands. You can
-   still run ``create``, ``update``, or ``delete`` commands on a stack marked with ``obsolete: True``;
-   these commands will ignore the ``obsolete`` setting and act upon the stack the same as any other.
+   The ``obsolete`` configuration applies to the **launch** and **prune** commands, to **diff**, and
+   to **list outputs** when ``--exclude-obsolete`` is passed. You can still run ``create``,
+   ``update``, or ``delete`` commands on a stack marked with ``obsolete: True``; these commands will
+   ignore the ``obsolete`` setting and act upon the stack the same as any other.
 
 on_failure
 ~~~~~~~~~~

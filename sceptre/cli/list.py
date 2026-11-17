@@ -103,6 +103,11 @@ def write_outputs(export, responses, plan, context):
         write(responses, context.output_format)
 
 
+def filter_plan_for_obsolete(plan: SceptrePlan):
+    plan.resolve(plan.describe_outputs.__name__)
+    plan.filter(lambda stack: not stack.obsolete)
+
+
 @list_group.command(name="outputs")
 @click.argument("path")
 @click.option(
@@ -111,9 +116,14 @@ def write_outputs(export, responses, plan, context):
     type=click.Choice(["envvar", "stackoutput", "stackoutputexternal"]),
     help="Specify the export formatting.",
 )
+@click.option(
+    "--exclude-obsolete",
+    is_flag=True,
+    help="Exclude stacks marked as obsolete.",
+)
 @click.pass_context
 @catch_exceptions
-def list_outputs(ctx, path, export):
+def list_outputs(ctx, path, export, exclude_obsolete):
     """
     List outputs for stack.
     \f
@@ -121,6 +131,8 @@ def list_outputs(ctx, path, export):
     :type path: str
     :param export: Specify the export formatting.
     :type export: str
+    :param exclude_obsolete: Exclude stacks marked as obsolete.
+    :type exclude_obsolete: bool
     """
     context = SceptreContext(
         command_path=path,
@@ -133,6 +145,9 @@ def list_outputs(ctx, path, export):
     )
 
     plan = SceptrePlan(context)
+    if exclude_obsolete:
+        filter_plan_for_obsolete(plan)
+
     responses = [response for response in plan.describe_outputs().values() if response]
 
     write_outputs(export, responses, plan, context)
