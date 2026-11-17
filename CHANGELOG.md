@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## Unreleased
+
+### Added
+ - Add `--exclude-obsolete` to `sceptre list outputs`, which skips stacks marked
+   `obsolete: true` instead of trying to describe them. Useful after
+   `sceptre launch --prune`, when obsolete Stack Configs remain in the project but
+   their CloudFormation stacks have been deleted.
+
 ## 4.7.0 (2026.05.22)
 - [Resolve #1466 ] Extend STS session expiry for long running deployments (#1587)
 - [Resolves #1568] Adding concurrency options to throttle deployments (#1560)
